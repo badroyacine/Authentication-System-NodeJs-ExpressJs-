@@ -4,6 +4,7 @@
   "description": "Authentication system using Nodejs (ExpressJs), Mongoose and JWT",
   "main": "server.js",
   "scripts": {
+    "start": "nodemon server.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "repository": {
