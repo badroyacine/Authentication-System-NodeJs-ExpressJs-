@@ -2,6 +2,7 @@ const catchAsync = require('./../utils/catchAsync');
 const ErrorResponse = require('../utils/errorResponse');
 const jwt = require('jsonwebtoken');
 const User = require('./../models/userModel');
+const crypto = require('crypto');
 
 const signToken = id => {
   return jwt.sign({ id: id}, process.env.JWT_SECRET, {
@@ -79,3 +80,58 @@ exports.logout = (req, res) => {
   });
 }
 
+exports.forgotPassword = catchAsync(async(req, res, next) => {
+
+  // 1) Get user based on POSTed email
+  const user = await User.findOne({ email: req.body.email });
+  if(!user){
+    return next(new ErrorResponse('There is no user with is email', 404));
+  }
+
+  // 2) Generate the rendom reset token
+  const resetToken = user.createPasswordResetToken();
+  await user.save({ validateBeforeSave: false });
+
+  // 3) construct url to send to the user
+  const resetURL = `${req.protocol}://${req.get('host')}/api/v1/users/resetPassword/${resetToken}`;
+
+  try{
+    res.status(200).json({
+      status: 'success',
+      resetURL
+    });
+  } catch(err){
+    user.passwordResetToken = undefined;
+    user.passwordResetExpires = undefined;
+    await user.save({ validateBeforeSave: false });
+    return next(new ErrorResponse('Error when sending the email', 500));
+  }
+});
+
+exports.resetPassword = catchAsync(async (req, res, next) => {
+  // Get user based on the token
+  const hashedToken = crypto.createHash('sha256').update(req.params.token).digest('hex');
+
+  const user = await User.findOne({ 
+    passwordResetToken: hashedToken,
+    passwordResetExpires: { $gt: Date.now() }
+  });
+
+  if(!user){
+    return next(new ErrorResponse('This token is invalid or expired', 400));
+  }
+
+  user.password = req.body.password;
+  user.passwordConfirm = req.body.passwordConfirm;
+  user.passwordResetToken = undefined;
+  user.passwordResetExpires = undefined;
+  
+  await user.save();
+
+  const token = signToken(user._id);
+  res.status(200).json({
+    status: 'success',
+    token
+  });
+
+});
