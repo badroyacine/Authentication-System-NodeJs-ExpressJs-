@@ -79,3 +79,31 @@ exports.logout = (req, res) => {
   });
 }
 
+exports.forgotPassword = catchAsync(async(req, res, next) => {
+
+  // 1) Get user based on POSTed email
+  const user = await User.findOne({ email: req.body.email });
+  if(!user){
+    return next(new ErrorResponse('There is no user with is email', 404));
+  }
+
+  // 2) Generate the rendom reset token
+  const resetToken = user.createPasswordResetToken();
+  await user.save({ validateBeforeSave: false });
+
+  // 3) construct url to send to the user
+  const resetURL = `${req.protocol}://${req.get('host')}/api/v1/users/resetPassword/${resetToken}`;
+
+  try{
+    res.status(200).json({
+      status: 'success',
+      resetURL
+    });
+  } catch(err){
+    user.passwordResetToken = undefined;
+    user.passwordResetExpires = undefined;
+    await user.save({ validateBeforeSave: false });
+    return next(new ErrorResponse('Error when sending the email', 500));
+  }
+});
+
